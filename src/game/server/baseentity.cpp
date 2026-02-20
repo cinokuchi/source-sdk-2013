@@ -63,6 +63,7 @@
 #include "tier1/utlstring.h"
 #include "utlhashtable.h"
 #include "vscript_server.h"
+#include "ilagcompensationmanager.h"
 
 #if defined( TF_DLL )
 #include "tf_gamerules.h"
@@ -2222,6 +2223,8 @@ BEGIN_DATADESC_NO_BASE( CBaseEntity )
 
 	//DEFINE_FIELD( m_DamageModifiers, FIELD_?? ), // can't save?
 	// DEFINE_FIELD( m_fDataObjectTypes, FIELD_INTEGER ),
+    
+    DEFINE_KEYFIELD( m_bLagCompensate, FIELD_BOOLEAN, "LagCompensate" ),
 
 #ifdef TF_DLL
 	DEFINE_ARRAY( m_nModelIndexOverrides, FIELD_INTEGER, MAX_VISION_MODES ),
@@ -2444,6 +2447,12 @@ void CBaseEntity::UpdateOnRemove( void )
 
 	// Virtual call to shut down any looping sounds.
 	StopLoopingSounds();
+
+	// Remove from lag compensation 'extra' list
+	if ( ShouldLagCompensate() )
+	{
+		lagcompensation->RemoveAdditionalEntity( this );		
+	}
 
 	// Notifies entity listeners, etc
 	gEntList.NotifyRemoveEntity( GetRefEHandle() );
@@ -3952,6 +3961,15 @@ void CBaseEntity::Spawn( void )
 {
 }
 
+// Post KeyValues/Map data parsing hook
+void CBaseEntity::OnParseMapDataFinished()
+{
+	// Add to lag compensation list
+	if ( ShouldLagCompensate() )
+	{
+		lagcompensation->AddAdditionalEntity( this );		
+	}
+}
 
 CBaseEntity* CBaseEntity::Instance( const CBaseHandle &hEnt )
 {
@@ -8509,6 +8527,11 @@ void CBaseEntity::SetCollisionBoundsFromModel()
 	}
 }
 
+//------------------------------------------------------------------------------
+bool CBaseEntity::ShouldLagCompensate() const
+{
+	return m_bLagCompensate;
+}
 
 //------------------------------------------------------------------------------
 // Purpose: Create an NPC of the given type

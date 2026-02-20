@@ -1,5 +1,9 @@
 # Files to ignore when considering what GIT should commit.
 
+# Added by chris
+game/mod_tf/*
+game/mod_tf_win64.exe
+
 # Visual Studio 
 *.suo
 *.user

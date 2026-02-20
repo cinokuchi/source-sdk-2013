@@ -571,6 +571,8 @@ public:
 	virtual void Precache( void ) {}
 
 	virtual void SetModel( const char *szModelName );
+    
+	virtual void OnParseMapDataFinished();
 
 protected:
 	// Notification on model load. May be called multiple times for dynamic models.
@@ -1948,6 +1950,8 @@ public:
 	static bool						PrecacheSound( const char *name );
 	static void						PrefetchSound( const char *name );
 	void							Remove( ); // UTIL_Remove( this );
+    
+	bool							ShouldLagCompensate() const;
 
 private:
 
@@ -1968,6 +1972,7 @@ private:
 	friend void TransferChildren( CBaseEntity *pOldParent, CBaseEntity *pNewParent );
 
 	bool m_bForcePurgeFixedupStrings; // For template entites so we don't leak strings.
+	bool m_bLagCompensate; // Special flag for certain l4d2 props to use
 	
 public:
 	// Accessors for above
