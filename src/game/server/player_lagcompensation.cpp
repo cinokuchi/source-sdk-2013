@@ -182,7 +182,10 @@ static void RestorePlayerTo( CBasePlayer *pPlayer, const Vector &vWantedPos )
 class CLagCompensationManager : public CAutoGameSystemPerFrame, public ILagCompensationManager
 {
 public:
-	CLagCompensationManager( char const *name ) : CAutoGameSystemPerFrame( name ), m_flTeleportDistanceSqr( 64 *64 )
+	CLagCompensationManager( char const *name ) :
+        CAutoGameSystemPerFrame( name ),
+        m_flTeleportDistanceSqr( 64 *64 ), 
+		m_CompensatedEntities( 0, 0, DefLessFunc( EHANDLE ) )
 	{
 		m_isCurrentlyDoingCompensation = false;
 	}
@@ -208,6 +211,10 @@ public:
 	void			FinishLagCompensation( CBasePlayer *player );
 
 	bool			IsCurrentlyDoingLagCompensation() const OVERRIDE { return m_isCurrentlyDoingCompensation; }
+    
+	// Mappers can flag certain additional entities to lag compensate, this handles them
+	virtual void	AddAdditionalEntity( CBaseEntity *pEntity );
+	virtual void	RemoveAdditionalEntity( CBaseEntity *pEntity );
 
 private:
 	void			BacktrackPlayer( CBasePlayer *player, float flTargetTime );
@@ -216,10 +223,19 @@ private:
 	{
 		for ( int i=0; i<MAX_PLAYERS; i++ )
 			m_PlayerTrack[i].Purge();
+
+        FOR_EACH_MAP( m_CompensatedEntities, i )
+		{
+			delete m_CompensatedEntities[ i ];
+		}
+		m_CompensatedEntities.Purge();
 	}
+    
+    LagRecord               *UpdateLagHistoryForEntity(CBaseEntity * baseEntityPtr, CUtlFixedLinkedList< LagRecord > * track, int flDeadtime);
 
 	// keep a list of lag records for each player
 	CUtlFixedLinkedList< LagRecord >	m_PlayerTrack[ MAX_PLAYERS ];
+	CUtlMap< EHANDLE, CUtlFixedLinkedList< LagRecord > * > m_CompensatedEntities;
 
 	// Scratchpad for determining what needs to be restored
 	CBitVec<MAX_PLAYERS>	m_RestorePlayer;
@@ -238,6 +254,27 @@ private:
 static CLagCompensationManager g_LagCompensationManager( "CLagCompensationManager" );
 ILagCompensationManager *lagcompensation = &g_LagCompensationManager;
 
+// Mappers can flag certain additional entities to lag compensate, this handles them
+void CLagCompensationManager::AddAdditionalEntity( CBaseEntity *pEntity )
+{
+	EHANDLE eh = pEntity;
+	if ( m_CompensatedEntities.Find( eh ) == m_CompensatedEntities.InvalidIndex() )
+	{
+        CUtlFixedLinkedList< LagRecord > * trackPtr = new CUtlFixedLinkedList< LagRecord >();
+        m_CompensatedEntities.Insert( eh, trackPtr );
+	}
+}
+
+void CLagCompensationManager::RemoveAdditionalEntity( CBaseEntity *pEntity )
+{
+	EHANDLE eh = pEntity;
+    int slot = m_CompensatedEntities.Find( eh );
+    if ( slot == m_CompensatedEntities.InvalidIndex() )
+        return;
+    CUtlFixedLinkedList< LagRecord > * trackPtr = m_CompensatedEntities[ slot ];
+    delete trackPtr;
+    m_CompensatedEntities.RemoveAt( slot );
+}
 
 //-----------------------------------------------------------------------------
 // Purpose: Called once per frame after all entities have had a chance to think
@@ -263,82 +300,100 @@ void CLagCompensationManager::FrameUpdatePostEntityThink()
 		CBasePlayer *pPlayer = UTIL_PlayerByIndex( i );
 
 		CUtlFixedLinkedList< LagRecord > *track = &m_PlayerTrack[i-1];
+        
+        LagRecord *recordPtr = UpdateLagHistoryForEntity(pPlayer, track, flDeadtime);
 
-		if ( !pPlayer )
-		{
-			if ( track->Count() > 0 )
-			{
-				track->RemoveAll();
-			}
+        //Players furthermore have animations that need to get rewound
+        if(recordPtr != nullptr){
+            recordPtr->m_flSimulationTime	= pPlayer->GetSimulationTime();
+            recordPtr->m_vecAngles			= pPlayer->GetLocalAngles();
+            recordPtr->m_vecOrigin			= pPlayer->GetLocalOrigin();
+            recordPtr->m_vecMinsPreScaled	= pPlayer->CollisionProp()->OBBMinsPreScaled();
+            recordPtr->m_vecMaxsPreScaled	= pPlayer->CollisionProp()->OBBMaxsPreScaled();
 
-			continue;
-		}
+            int layerCount = pPlayer->GetNumAnimOverlays();
+            for( int layerIndex = 0; layerIndex < layerCount; ++layerIndex )
+            {
+                CAnimationLayer *currentLayer = pPlayer->GetAnimOverlay(layerIndex);
+                if( currentLayer )
+                {
+                    recordPtr->m_layerRecords[layerIndex].m_cycle = currentLayer->m_flCycle;
+                    recordPtr->m_layerRecords[layerIndex].m_order = currentLayer->m_nOrder;
+                    recordPtr->m_layerRecords[layerIndex].m_sequence = currentLayer->m_nSequence;
+                    recordPtr->m_layerRecords[layerIndex].m_weight = currentLayer->m_flWeight;
+                }
+            }
+            recordPtr->m_masterSequence = pPlayer->GetSequence();
+            recordPtr->m_masterCycle = pPlayer->GetCycle();
 
-		Assert( track->Count() < 1000 ); // insanity check
-
-		// remove tail records that are too old
-		intp tailIndex = track->Tail();
-		while ( track->IsValidIndex( tailIndex ) )
-		{
-			LagRecord &tail = track->Element( tailIndex );
-
-			// if tail is within limits, stop
-			if ( tail.m_flSimulationTime >= flDeadtime )
-				break;
-			
-			// remove tail, get new tail
-			track->Remove( tailIndex );
-			tailIndex = track->Tail();
-		}
-
-		// check if head has same simulation time
-		if ( track->Count() > 0 )
-		{
-			LagRecord &head = track->Element( track->Head() );
-
-			// check if player changed simulation time since last time updated
-			if ( head.m_flSimulationTime >= pPlayer->GetSimulationTime() )
-				continue; // don't add new entry for same or older time
-		}
-
-		// add new record to player track
-		LagRecord &record = track->Element( track->AddToHead() );
-
-		record.m_fFlags = 0;
-		if ( pPlayer->IsAlive() )
-		{
-			record.m_fFlags |= LC_ALIVE;
-		}
-
-		record.m_flSimulationTime	= pPlayer->GetSimulationTime();
-		record.m_vecAngles			= pPlayer->GetLocalAngles();
-		record.m_vecOrigin			= pPlayer->GetLocalOrigin();
-		record.m_vecMinsPreScaled	= pPlayer->CollisionProp()->OBBMinsPreScaled();
-		record.m_vecMaxsPreScaled	= pPlayer->CollisionProp()->OBBMaxsPreScaled();
-
-		int layerCount = pPlayer->GetNumAnimOverlays();
-		for( int layerIndex = 0; layerIndex < layerCount; ++layerIndex )
-		{
-			CAnimationLayer *currentLayer = pPlayer->GetAnimOverlay(layerIndex);
-			if( currentLayer )
-			{
-				record.m_layerRecords[layerIndex].m_cycle = currentLayer->m_flCycle;
-				record.m_layerRecords[layerIndex].m_order = currentLayer->m_nOrder;
-				record.m_layerRecords[layerIndex].m_sequence = currentLayer->m_nSequence;
-				record.m_layerRecords[layerIndex].m_weight = currentLayer->m_flWeight;
-			}
-		}
-		record.m_masterSequence = pPlayer->GetSequence();
-		record.m_masterCycle = pPlayer->GetCycle();
-
-		for( int i=0; i<MAXSTUDIOPOSEPARAM; i++ )
-		{
-			record.m_flPoseParameters[i] = pPlayer->GetPoseParameter(i);
-		}
+            for( int i=0; i<MAXSTUDIOPOSEPARAM; i++ )
+            {
+                recordPtr->m_flPoseParameters[i] = pPlayer->GetPoseParameter(i);
+            }
+        }
 	}
+
+    // Iterate all additional entities
+    FOR_EACH_MAP( m_CompensatedEntities, i ) {
+        CUtlFixedLinkedList< LagRecord > *track = m_CompensatedEntities[ i ];
+		EHANDLE key = m_CompensatedEntities.Key( i );
+		CBaseEntity *pEntity = key.Get();
+        
+        UpdateLagHistoryForEntity(pEntity, track, flDeadtime);
+    }
 
 	//Clear the current player.
 	m_pCurrentPlayer = NULL;
+}
+
+LagRecord *CLagCompensationManager::UpdateLagHistoryForEntity(CBaseEntity * baseEntityPtr, CUtlFixedLinkedList< LagRecord > * track, int flDeadtime){
+    if ( !baseEntityPtr )
+    {
+        if ( track->Count() > 0 )
+        {
+            track->RemoveAll();
+        }
+
+        return nullptr;
+    }
+
+    Assert( track->Count() < 1000 ); // insanity check
+
+    // remove tail records that are too old
+    intp tailIndex = track->Tail();
+    while ( track->IsValidIndex( tailIndex ) )
+    {
+        LagRecord &tail = track->Element( tailIndex );
+
+        // if tail is within limits, stop
+        if ( tail.m_flSimulationTime >= flDeadtime )
+            break;
+        
+        // remove tail, get new tail
+        track->Remove( tailIndex );
+        tailIndex = track->Tail();
+    }
+
+    // check if head has same simulation time
+    if ( track->Count() > 0 )
+    {
+        LagRecord &head = track->Element( track->Head() );
+
+        // check if player changed simulation time since last time updated
+        if ( head.m_flSimulationTime >= baseEntityPtr->GetSimulationTime() )
+            return nullptr; // don't add new entry for same or older time
+    }
+
+    // add new record to player track
+    LagRecord *recordPtr = &track->Element( track->AddToHead() );
+
+    recordPtr->m_fFlags = 0;
+    if ( baseEntityPtr->IsAlive() )
+    {
+        recordPtr->m_fFlags |= LC_ALIVE;
+    }
+    
+    return recordPtr;
 }
 
 // Called during player movement to set up/restore after lag compensation
