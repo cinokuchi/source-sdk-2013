@@ -3,6 +3,8 @@
 # Added by chris
 game/mod_tf/*
 game/mod_tf_win64.exe
+game/platform/*
+game/steam_appid.txt
 
 # Visual Studio 
 *.suo
