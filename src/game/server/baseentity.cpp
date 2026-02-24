@@ -3959,11 +3959,6 @@ void CBaseEntity::SetMoveType( MoveType_t val, MoveCollide_t moveCollide )
 
 void CBaseEntity::Spawn( void ) 
 {
-}
-
-// Post KeyValues/Map data parsing hook
-void CBaseEntity::OnParseMapDataFinished()
-{
 	// Add to lag compensation list
 	if ( ShouldLagCompensate() )
 	{

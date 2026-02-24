@@ -452,6 +452,8 @@ void CBaseButton::Spawn( )
 	}
 
 	CreateVPhysics();
+    
+    CBaseToggle::Spawn();
 }
 
 //-----------------------------------------------------------------------------

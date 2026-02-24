@@ -571,8 +571,6 @@ public:
 	virtual void Precache( void ) {}
 
 	virtual void SetModel( const char *szModelName );
-    
-	virtual void OnParseMapDataFinished();
 
 protected:
 	// Notification on model load. May be called multiple times for dynamic models.
