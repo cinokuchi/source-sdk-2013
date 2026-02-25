@@ -5,6 +5,9 @@ game/mod_tf/*
 game/mod_tf_win64.exe
 game/platform/*
 game/steam_appid.txt
+!game/mod_tf/maps/
+!game/mod_tf/scriptdata/
+!game/mod_tf/scripts/
 
 # Visual Studio 
 *.suo
