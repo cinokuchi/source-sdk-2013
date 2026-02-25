@@ -232,6 +232,8 @@ void CBaseProp::Spawn( void )
 	m_flAnimTime = gpGlobals->curtime;
 	m_flPlaybackRate = 0.0;
 	SetCycle( 0 );
+    
+	CBaseAnimating::Spawn();
 }
 
 //-----------------------------------------------------------------------------
