@@ -14,6 +14,5 @@ function registerRotator(){
 }
 
 function reverseRotator(){
-    local prevActivator = activator
-    rotatorHandle.AcceptInput("RunScriptCode", "reverse()", prevActivator, self)
+    rotatorHandle.AcceptInput("Reverse", null, null, null)
 }
