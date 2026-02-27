@@ -722,8 +722,8 @@ bool CLagCompensationManager::BacktrackEntity( CBaseEntity *entity, float flTarg
 	// Note, do origin at end since it causes a relink into the k/d tree
 	if ( orgdiff.LengthSqr() > LAG_COMPENSATION_EPS_SQR )
 	{
-		Msg("current origin: x=%.2f y=%.2f z=%.2f\n", entity->GetAbsOrigin().x, entity->GetAbsOrigin().y, entity->GetAbsOrigin().z);
-		Msg("lagged origin: x=%.2f y=%.2f z=%.2f\n", org.x, org.y, org.z);
+		//Msg("current origin: x=%.2f y=%.2f z=%.2f\n", entity->GetAbsOrigin().x, entity->GetAbsOrigin().y, entity->GetAbsOrigin().z);
+		//Msg("lagged origin: x=%.2f y=%.2f z=%.2f\n", org.x, org.y, org.z);
 		flags |= LC_ORIGIN_CHANGED;
 		restore->m_vecOrigin = entity->GetAbsOrigin();
 		entity->SetAbsOrigin( org );
