@@ -228,8 +228,7 @@ function setRotationSpeed() {
         else if(speedMode == RANDOM_SPEED){
             speed = RandomInt(150, 300)
         }
-        caller.KeyValueFromFloat("maxspeed", getAngularSpeedFromLinearSpeed(rho, speed))
-        caller.AcceptInput("Start", null, null, null)
+        caller.AcceptInput("RunScriptCode", "setRotationSpeed(" + getAngularSpeedFromLinearSpeed(rho, speed) + ")", null, null)
     }
 }
 
